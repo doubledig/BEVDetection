@@ -28,9 +28,10 @@ class LSSTransform(BaseModule):
         self.x_bound = [pc_range[0], pc_range[3], voxel_size[0]]
         self.y_bound = [pc_range[1], pc_range[4], voxel_size[1]]
         self.z_bound = [pc_range[2], pc_range[5], voxel_size[2]]
-        self.dx = None
-        self.bx = None
-        self.nx = None
+        dx, bx, nx = gen_dx_bx(self.x_bound, self.y_bound, self.z_bound)
+        self.dx = dx
+        self.bx = bx
+        self.nx = nx
         self.d_s = down_sample
         if self.d_s > 1:
             self.down_sample = nn.Sequential(
@@ -52,14 +53,13 @@ class LSSTransform(BaseModule):
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
 
-    def forward(self, image: torch.Tensor, img_metas, only_bev=False):
+    def forward(self, image: torch.Tensor, img_metas):
         b, n, c, fh, fw = image.shape
         device = image.device
-        if self.dx is None:
-            dx, bx, nx = gen_dx_bx(self.x_bound, self.y_bound, self.z_bound)
-            self.dx = dx.to(device)
-            self.bx = bx.to(device)
-            self.nx = nx.to(device)
+        if self.dx.device != device:
+            self.dx = self.dx.to(device)
+            self.bx = self.bx.to(device)
+            self.nx = self.nx.to(device)
         ih = img_metas[0].img_padshape[0]
         iw = img_metas[0].img_padshape[1]
         # 生成img下的深度点
@@ -122,8 +122,6 @@ class LSSTransform(BaseModule):
         if self.d_s > 1:
             bev_feat = self.down_sample(bev_feat)
         bev_feat = bev_feat.reshape(b, c, -1).permute(0, 2, 1).contiguous()
-        if only_bev:
-            return bev_feat
         return bev_feat, depth
 
     def create_frustum(self, fh, fw, ih, iw):

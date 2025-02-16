@@ -64,6 +64,7 @@ class MapTrDecoder(BaseModule):
 
     def init_weights(self):
         nn.init.xavier_uniform_(self.reference_points.weight)
+        nn.init.constant_(self.reference_points.bias, 0.0)
         bias_init = bias_init_with_prob(0.01)
         for m in self.cls_branches:
             nn.init.constant_(m[-1].bias, bias_init)

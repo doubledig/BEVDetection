@@ -63,7 +63,7 @@ class MapTR(BaseModel):
         inter_scores = inter_scores.flatten(0, 1).sigmoid()
         inter_points = inter_points.flatten(0, 1)
 
-        scores, index = inter_scores.view(-1).topk(50)
+        scores, index = inter_scores.view(-1).topk(self.num_obj)
         labels = index % self.num_cls
         pts_idx = index // self.num_cls
         inter_points = inter_points[pts_idx]
@@ -71,7 +71,12 @@ class MapTR(BaseModel):
         inter_points[:, :, 0:1] = (inter_points[:, :, 0:1] - 0.5) * self.real_w
         inter_points[:, :, 1:2] = (inter_points[:, :, 1:2] - 0.5) * self.real_h
 
-        return [scores.cpu(), labels.cpu(), inter_points.cpu()]
+        predictions_dict = {
+            'scores': scores.cpu(),
+            'labels': labels.cpu(),
+            'pts': pts_pred.cpu(),
+        }
+        return [predictions_dict]
 
     def extract_feat(self, img):
         # backbone fpn
@@ -95,6 +100,7 @@ class MapTR(BaseModel):
 
         # loss
         loss = self.loss(inter_scores, inter_points, data_samples)
+        return loss
 
     def loss(self,
              inter_scores,

@@ -227,7 +227,7 @@ class MakeLineGts(BaseTransform):
         results['gt_label'] = gt_label
         results['gt_pts'] = gt_pts
         results['gt_mask'] = gt_mask
-        results['gt_test'] = gt_test
+        results['gt_test'] = gt_test  # 保持numpy
         results['gt_bev'] = gt_semantic_mask
         results['gt_pv'] = gt_pv_semantic_mask
         return results

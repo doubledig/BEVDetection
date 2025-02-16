@@ -35,14 +35,13 @@ if __name__ == '__main__':
         config.work_dir = args.work_dir
     if args.load_from is not None:
         config.load_from = args.load_from
+    config.test_evaluator['save_path'] = os.path.join(config.work_dir, 'metric_data.pkl')
 
     if args.load_result is not None:
         metric = EVALUATOR.build(config.test_evaluator)
         result = mmengine.load(args.load_result)
-        maps = metric.compute_metrics(result)
+        maps = metric.compute_metrics(result, False)
         print(maps)
     else:
         runner = Runner.from_cfg(config)
         runner.test()
-        metric = runner.test_evaluator.metrics[0]
-        metric.save(os.path.join(config.work_dir, 'metric_data.pkl'))

@@ -133,6 +133,7 @@ class Bottleneck(nn.Module):
 
 
 class ResNet(nn.Module):
+    #  使用pytorch的实现，添加了冻结参数功能。没有实现远程下载ckpt的功能，如要加载需要提前下载到本地。
     arch_settings = {
         18: (BasicBlock, (2, 2, 2, 2)),
         34: (BasicBlock, (3, 4, 6, 3)),
@@ -206,7 +207,7 @@ class ResNet(nn.Module):
         if pretrained is not None:
             assert isinstance(pretrained, str)
             self.load_state_dict(torch.load(pretrained, weights_only=True), strict=False)
-            logger = MMLogger.get_instance('mmengine', log_level='INFO')
+            logger = MMLogger.get_instance('mmengine')
             logger.info(f"load ckpts from {pretrained}")
 
     def _make_layer(
