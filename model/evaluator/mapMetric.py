@@ -4,7 +4,7 @@ from typing import Any, Sequence, Optional
 
 import mmengine
 import numpy as np
-from mmengine import MMLogger
+from mmengine import print_log
 from mmengine.evaluator import BaseMetric
 from shapely.geometry import LineString
 
@@ -60,11 +60,10 @@ class MapMetric(BaseMetric):
         self.results.append(result)
 
     def compute_metrics(self, results: list, save: bool = True) -> dict:
-        logger = MMLogger.get_instance('mmengine')
         if save:
             mmengine.dump(results, self.save_path)
-            logger.info('save temp results success!')
-        logger.info(f'-*-*-*-*-*-*-*-*-*-*-use metric:{self.metric}-*-*-*-*-*-*-*-*-*-*-')
+            print_log('save temp results success!', 'current')
+        print_log(f'-*-*-*-*-*-*-*-*-*-*-use metric:{self.metric}-*-*-*-*-*-*-*-*-*-*-', 'current')
         mAP = 0
         timer = mmengine.Timer()
         th_len = len(self.thresholds)

@@ -74,7 +74,7 @@ class MapTR(BaseModel):
         predictions_dict = {
             'scores': scores.cpu(),
             'labels': labels.cpu(),
-            'pts': pts_pred.cpu(),
+            'pts': inter_points.cpu(),
         }
         return [predictions_dict]
 
@@ -85,13 +85,18 @@ class MapTR(BaseModel):
         if self.use_grid_mask:
             img = self.grid_mask(img)
         img_feats = self.img_backbone(img)
+        if isinstance(img_feats, dict):
+            img_feats = list(img_feats.values())
         img_feats = self.img_neck(img_feats)
-        _, c, h, w = img_feats[0].shape
-        img_feats = img_feats[0].reshape(b, n, c, h, w)
-        return img_feats
+        img_feats_reshaped = []
+        for img_feat in img_feats:
+            _, c, h, w = img_feat.shape
+            img_feats_reshaped.append(img_feat.view(b, n, c, h, w))
+        return img_feats_reshaped
 
     def forward_train(self, inputs: torch.Tensor, data_samples=None):
         img_feats = self.extract_feat(inputs)
+        img_feats = img_feats[0]  # 不使用多层次特征
         # 时序未实现
         # pv -> bev
         bev_feat = self.encoder(img_feats, data_samples)

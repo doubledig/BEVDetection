@@ -5,7 +5,7 @@ from torch.amp import autocast
 
 from project_plugin import bev_pool, bev_pool_v2
 from model.backbone.resnet import BasicBlock
-from model.utils.module import gen_dx_bx
+from model.utils.functional import gen_dx_bx
 
 
 class LSSTransform(BaseModule):

@@ -5,7 +5,7 @@ from mmcv.cnn.bricks.transformer import build_transformer_layer
 from mmengine.model import BaseModule, bias_init_with_prob
 from torch import nn
 
-from model.utils.module import inverse_sigmoid
+from model.utils.functional import inverse_sigmoid
 
 
 class MapTrDecoder(BaseModule):

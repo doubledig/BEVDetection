@@ -4,13 +4,26 @@ from typing import Optional, List, Union, Callable
 from mmengine.dataset import BaseDataset
 
 
-class CustomNusMapDataset(BaseDataset):
+class CustomNusDataset(BaseDataset):
     """
     自定义nus数据集，用于读取重新生成的标注文件
-    实现地面要素检测
+    实现3d检测
     不考虑时序需求
     """
-    CLASSES = ('divider', 'ped_crossing', 'boundary')
+    CLASSES = ('car', 'truck', 'trailer', 'bus', 'construction_vehicle', 'bicycle',
+               'motorcycle', 'pedestrian', 'traffic_cone', 'barrier')
+    PALETTE = (
+            (255, 158, 0),  # Orange
+            (255, 99, 71),  # Tomato
+            (255, 140, 0),  # Darkorange
+            (255, 127, 80),  # Coral
+            (233, 150, 70),  # Darksalmon
+            (220, 20, 60),  # Crimson
+            (255, 61, 99),  # Red
+            (0, 0, 230),  # Blue
+            (47, 79, 79),  # Darkslategrey
+            (112, 128, 144)  # Slategrey
+    )
 
     def __init__(self,
                  ann_file: Optional[str] = '',
@@ -36,4 +49,3 @@ class CustomNusMapDataset(BaseDataset):
         raw_data_info['lidar_path'] = os.path.join(self.data_path, raw_data_info['lidar_path'])
         raw_data_info['class'] = self.CLASSES
         return raw_data_info
-

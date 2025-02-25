@@ -1,8 +1,9 @@
+import logging
 from typing import Callable, List, Optional, Type, Union
 
-import torch
 import torch.nn as nn
-from mmengine import MMLogger
+from mmengine import print_log
+from mmengine.model import BaseModule, initialize, kaiming_init, constant_init
 from torch import Tensor
 
 
@@ -132,8 +133,8 @@ class Bottleneck(nn.Module):
         return out
 
 
-class ResNet(nn.Module):
-    #  使用pytorch的实现，添加了冻结参数功能。没有实现远程下载ckpt的功能，如要加载需要提前下载到本地。
+class ResNet(BaseModule):
+    #  使用torchvision的实现，添加了冻结参数功能。没有实现远程下载ckpt的功能，如要加载需要提前下载到本地。
     arch_settings = {
         18: (BasicBlock, (2, 2, 2, 2)),
         34: (BasicBlock, (3, 4, 6, 3)),
@@ -152,9 +153,10 @@ class ResNet(nn.Module):
             frozen_stages: int = -1,
             bn_eval: bool = False,
             bn_frozen: bool = False,
-            pretrained=None,
+            out_indices=(3,),
+            init_cfg: Union[dict, List[dict], None] = None
     ) -> None:
-        super().__init__()
+        super().__init__(init_cfg)
         norm_layer = nn.BatchNorm2d
         self._norm_layer = norm_layer
         if depth not in self.arch_settings:
@@ -162,6 +164,7 @@ class ResNet(nn.Module):
         block, layers = self.arch_settings[depth]
         self.inplanes = 64
         self.dilation = 1
+        self.out_indices = out_indices
 
         self.bn_eval = bn_eval
         self.bn_frozen = bn_frozen
@@ -204,11 +207,25 @@ class ResNet(nn.Module):
                 elif isinstance(m, BasicBlock) and m.bn2.weight is not None:
                     nn.init.constant_(m.bn2.weight, 0)  # type: ignore[arg-type]
 
-        if pretrained is not None:
-            assert isinstance(pretrained, str)
-            self.load_state_dict(torch.load(pretrained, weights_only=True), strict=False)
-            logger = MMLogger.get_instance('mmengine')
-            logger.info(f"load ckpts from {pretrained}")
+        self.init_weights()
+
+    def init_weights(self) -> None:
+        if not self._is_init:
+            if self.init_cfg:
+                print_log(
+                    f'initialize {self.__class__.__name__} with init_cfg {self.init_cfg}',
+                    logger='current',
+                    level=logging.DEBUG)
+                init_cfg = self.init_cfg
+                assert isinstance(init_cfg, dict)
+                initialize(self, [init_cfg])
+            else:
+                for m in self.modules():
+                    if isinstance(m, nn.Conv2d):
+                        kaiming_init(m)
+                    elif isinstance(m, nn.BatchNorm2d):
+                        constant_init(m, 1)
+            self.is_init = True
 
     def _make_layer(
             self,
@@ -255,12 +272,21 @@ class ResNet(nn.Module):
         x = self.relu(x)
         x = self.maxpool(x)
 
+        outs = []
         x = self.layer1(x)
+        if 0 in self.out_indices:
+            outs.append(x)
         x = self.layer2(x)
+        if 1 in self.out_indices:
+            outs.append(x)
         x = self.layer3(x)
+        if 2 in self.out_indices:
+            outs.append(x)
         x = self.layer4(x)
+        if 3 in self.out_indices:
+            outs.append(x)
 
-        return (x, )
+        return tuple(outs)
 
     def train(self, mode: bool = True):
         super().train(mode)

@@ -88,7 +88,7 @@ class BEVFormerTransform(BaseModule):
         device = pv_feats.device
 
         bev_queries = self.bev_embedding.weight.unsqueeze(0).expand(b, -1, -1)
-        bev_mask = torch.zeros(b, self.bev_h, self.bev_w)
+        bev_mask = torch.zeros((b, self.bev_h, self.bev_w), device=device)
         bev_pos = self.positional_encoding(bev_mask).flatten(2)
 
         can_bus = []

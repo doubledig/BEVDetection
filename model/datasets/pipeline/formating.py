@@ -13,9 +13,10 @@ from simplification.cutil import simplify_coords_vw, simplify_coords_idx
 
 class PackDataToInputs(BaseTransform):
     MATE_KEYS = (
-        'prev', 'next', 'token', 'img_padshape',
-        'intrinsic', 'train2ego', 'ego2cam', 'can_bus',
-        'depth', 'gt_label', 'gt_pts', 'gt_bev', 'gt_pv', 'gt_mask', 'gt_test'
+        'prev', 'next', 'token', 'img_shape', 'img_padshape',
+        'intrinsic', 'train2ego', 'ego2cam', 'can_bus', 'gt_bbox_3d',
+        'depth', 'gt_label', 'gt_pts', 'gt_bev', 'gt_pv', 'gt_mask', 'gt_test',
+        'gt_velocity'
     )
 
     def transform(self,
@@ -29,7 +30,8 @@ class PackDataToInputs(BaseTransform):
         data_metas = {}
         for key in (
             'depth', 'intrinsic', 'ego2cam', 'train2ego', 'can_bus',
-            'gt_label', 'gt_pts', 'gt_bev', 'gt_pv', 'gt_mask'
+            'gt_label', 'gt_pts', 'gt_bev', 'gt_pv', 'gt_mask', 'gt_bbox_3d',
+            'gt_velocity'
         ):
             if key not in results:
                 continue
@@ -42,6 +44,49 @@ class PackDataToInputs(BaseTransform):
         # data_sample.set_data(data_metas)
         packed_results['data_samples'] = data_sample
         return packed_results
+
+
+class Make3dGts(BaseTransform):
+    def __init__(self,
+                 use_valid=True,
+                 xy_range=(-51.2, -51.2, -5.0, 51.2, 51.2, 3.0),
+                 classes: Union[Tuple, List] = None):
+        self.use_valid = use_valid
+        self.xy_range = xy_range
+        self.classes = classes
+
+    def transform(self, results: Dict) -> Optional[Union[Dict, Tuple[List, List]]]:
+        gts = results['gts']
+        del results['gts']
+        gt_label = []
+        gt_bbox = []
+        gt_velocity = []
+        for gt in gts:
+            # 过滤不可见真值
+            if self.use_valid:
+                flag = gt['valid_flag']
+            else:
+                flag = gt['num_lidar_pts'] > 0
+            if not flag:
+                continue
+            # 过滤类别
+            if gt['gt_name'] in self.classes:
+                # 过滤区域外真值
+                if gt['gt_box'][0] < self.xy_range[0] or gt['gt_box'][0] > self.xy_range[3]:
+                    if gt['gt_box'][1] < self.xy_range[1] or gt['gt_box'][1] > self.xy_range[4]:
+                        continue
+                gt_velocity.append(np.isnan(gt['gt_velocity'][0]))
+                gt_bbox.append(np.concatenate([gt['gt_box'], np.nan_to_num(gt['gt_velocity'][:2])]))
+                gt_label.append(self.classes.index(gt['gt_name']))
+            else:
+                continue
+        gt_label = np.array(gt_label, dtype=np.int64)
+        gt_bbox = np.array(gt_bbox, dtype=np.float32)
+        gt_velocity = np.array(gt_velocity, dtype=np.bool_)
+        results['gt_label'] = gt_label
+        results['gt_bbox_3d'] = gt_bbox
+        results['gt_velocity'] = gt_velocity
+        return results
 
 
 class MakeLineGts(BaseTransform):

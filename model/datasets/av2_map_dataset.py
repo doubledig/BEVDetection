@@ -10,6 +10,8 @@ class CustomAv2MapDataset(BaseDataset):
     实现地面要素检测
     不考虑时序需求
     """
+    CLASSES = ('divider', 'ped_crossing', 'boundary')
+
     def __init__(self,
                  ann_file: Optional[str] = '',
                  data_path: Optional[str] = '',
@@ -32,5 +34,6 @@ class CustomAv2MapDataset(BaseDataset):
         for cam_type, cam_info in raw_data_info['cams'].items():
             raw_data_info['cams'][cam_type]['data_path'] = os.path.join(self.data_path, cam_info['data_path'])
         raw_data_info['lidar_path'] = os.path.join(self.data_path, raw_data_info['lidar_path'])
+        raw_data_info['class'] = self.CLASSES
         return raw_data_info
 

@@ -41,7 +41,10 @@ model = dict(
         frozen_stages=1,
         bn_eval=True,
         bn_frozen=True,
-        pretrained='ckpts/resnet50-19c8e357.pth'  # resnet50-11ad3fa6.pth
+        init_cfg=dict(
+            type='Pretrained',
+            checkpoint='ckpts/resnet50-19c8e357.pth'  # resnet50-11ad3fa6.pth
+        )
     ),
     img_neck=dict(
         type=FPN,
@@ -177,23 +180,23 @@ train_dataloader = dict(
     num_workers=4
 )
 
-val_dataloader = dict(
-    dataset=dict(
-        type=CustomNusMapDataset,
-        ann_file='dataset/nuScenes/nus_map_val.pkl',
-        data_path=data_root,
-        pipeline=val_pipeline,
-        test_mode=True
-    ),
-    sampler=dict(
-        type='DefaultSampler',
-        shuffle=False),
-    collate_fn=dict(type='default_collate'),
-    batch_size=1,
-    pin_memory=True,
-    num_workers=2
-)
-test_dataloader = val_dataloader
+# val_dataloader = dict(
+#     dataset=dict(
+#         type=CustomNusMapDataset,
+#         ann_file='dataset/nuScenes/nus_map_val.pkl',
+#         data_path=data_root,
+#         pipeline=val_pipeline,
+#         test_mode=True
+#     ),
+#     sampler=dict(
+#         type='DefaultSampler',
+#         shuffle=False),
+#     collate_fn=dict(type='default_collate'),
+#     batch_size=1,
+#     pin_memory=True,
+#     num_workers=2
+# )
+# test_dataloader = val_dataloader
 
 train_cfg = dict(
     by_epoch=True,
@@ -228,6 +231,3 @@ param_scheduler = [
         eta_min_ratio=1e-3
     )
 ]
-
-load_from = None
-resume = False

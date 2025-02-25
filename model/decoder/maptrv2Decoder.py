@@ -5,7 +5,7 @@ from mmcv.cnn.bricks.transformer import build_transformer_layer, BaseTransformer
 from mmengine.model import BaseModule, bias_init_with_prob
 from torch import nn
 
-from model.utils.module import inverse_sigmoid
+from model.utils.functional import inverse_sigmoid
 
 
 class MapTrv2Decoder(BaseModule):
@@ -18,7 +18,7 @@ class MapTrv2Decoder(BaseModule):
                  bev_w=100,
                  num_cls=3,
                  transformerlayers=None,
-                 num_layers=None,
+                 num_layers=6,
                  init_cfg=None):
         super().__init__(init_cfg=init_cfg)
         self.embed_dims = embed_dims

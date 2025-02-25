@@ -78,6 +78,7 @@ class MapTRv2(MapTR):
 
     def forward_train(self, inputs: torch.Tensor, data_samples=None):
         img_feats = self.extract_feat(inputs)
+        img_feats = img_feats[0]  # 不使用多层次特征
         # pv -> bev
         if self.use_lss:
             bev_feat, depth = self.encoder(img_feats, data_samples)

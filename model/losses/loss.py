@@ -127,6 +127,7 @@ class PtsL1Loss(nn.Module):
         dists = dists.sum() / (avg_factor + eps)
         return dists * self.loss_weight
 
+
 class PtsKpLoss(nn.Module):
     def __init__(self, reduction='mean', loss_weight=5.0, line_weight=6.0):
         super().__init__()
@@ -161,10 +162,11 @@ class PtsKpLoss(nn.Module):
         target_t[..., 0] = (bb * pred[..., 0].detach() - ab * pred[..., 1].detach() - a * c) / (aa + bb)
         target_t[..., 1] = (aa * pred[..., 1].detach() - ab * pred[..., 0].detach() - b * c) / (aa + bb)
         line_dists = nn.functional.l1_loss(pred, target_t, reduction='none').sum(dim=-1)
-        dists[mask] = line_dists[mask] * self.line_weight # + dists[mask]
+        dists[mask] = line_dists[mask] * self.line_weight  # + dists[mask]
         eps = torch.finfo(torch.float32).eps
         dists = dists.sum() / (avg_factor + eps)
         return dists
+
 
 class PtsDirCosLoss(nn.Module):
     def __init__(self, reduction='mean', loss_weight=1.0):
@@ -203,6 +205,7 @@ class PtsL1Cost:
         dists = (bbox_pred - gt_bboxes).abs().sum(dim=(-1, -2))
         return dists * self.weight
 
+
 class PtsKpCost:
     def __init__(self, loss_weight=5.0, line_weight=6.0):
         self.loss_weight = loss_weight
@@ -227,8 +230,9 @@ class PtsKpCost:
         line_dists = torch.abs(aa * bbox_pred[..., 0] + ab * bbox_pred[..., 1] + a * c) + \
                      torch.abs(bb * bbox_pred[..., 1] + ab * bbox_pred[..., 0] + b * c)
         line_dists = line_dists / (aa + bb + 1e-5)
-        dists[:, gt_masks] = line_dists[:, gt_masks] * self.line_weight #+ dists[:, gt_masks]
+        dists[:, gt_masks] = line_dists[:, gt_masks] * self.line_weight  #+ dists[:, gt_masks]
         return dists.sum(dim=-1)
+
 
 class FocalCost:
     def __init__(self, weight=2., alpha=0.25, gamma=2, eps=1e-12):
@@ -302,4 +306,27 @@ class FocalLoss(nn.Module):
         return loss_cls
 
 
+class BBox3dL1Cost:
+    def __init__(self, weight=1.):
+        self.weight = weight
 
+    def __call__(self, p_cls, gt_cls):
+        cost = torch.cdist(p_cls, gt_cls, p=1)
+        return cost * self.weight
+
+
+class BBox3dL1Loss(nn.Module):
+    def __init__(self, weight=1.):
+        super().__init__()
+        self.weight = weight
+
+    def forward(self,
+                pred,
+                target,
+                weight=None,
+                avg_factor=None):
+        dists = nn.functional.l1_loss(pred, target, reduction='none')
+        dists = dists * weight
+        eps = torch.finfo(torch.float32).eps
+        dists = dists.sum() / (avg_factor + eps)
+        return dists * self.weight

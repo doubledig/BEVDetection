@@ -7,30 +7,16 @@ import numpy as np
 import torch
 import torch.nn as nn
 from PIL import Image
+from mmcv.cnn.bricks.drop import build_dropout
 from mmcv.cnn.bricks.transformer import build_attention
 from mmcv.ops.multi_scale_deform_attn import MultiScaleDeformableAttnFunction, multi_scale_deformable_attn_pytorch
 from mmcv.utils import IS_CUDA_AVAILABLE, IS_MLU_AVAILABLE, IS_NPU_AVAILABLE
+from mmengine import deprecated_api_warning
 from mmengine.model import constant_init, kaiming_init, BaseModule, xavier_init
 from mmengine.registry import MODELS
 from mmengine.utils.dl_utils.parrots_wrapper import _BatchNorm
 
 from project_plugin import GeometricKernelAttentionFunc
-
-
-def inverse_sigmoid(x, eps: float = 1e-5):
-    x = x.clamp(min=0, max=1)
-    x1 = x.clamp(min=eps)
-    x2 = (1 - x).clamp(min=eps)
-    return torch.log(x1 / x2)
-
-
-def gen_dx_bx(x_bound, y_bound, z_bound):
-    dx = torch.Tensor([row[2] for row in [x_bound, y_bound, z_bound]])
-    bx = torch.Tensor([row[0] for row in [x_bound, y_bound, z_bound]])
-    nx = torch.Tensor(
-        [int((row[1] - row[0]) / row[2]) for row in [x_bound, y_bound, z_bound]]
-    )
-    return dx, bx, nx
 
 
 def efficient_conv_bn_eval_forward(bn: _BatchNorm,
@@ -284,10 +270,21 @@ class ConvModule(nn.Module):
 
 
 class GridMask(nn.Module):
-    def __init__(self, rotate=1, ratio=0.5, p=0.7):
+    def __init__(self,
+                 use_h=True,
+                 use_w=True,
+                 rotate=1,
+                 offset=False,
+                 ratio=0.5,
+                 mode=1,
+                 p=0.7):
         super().__init__()
+        self.use_h = use_h
+        self.use_w = use_w
         self.rotate = rotate
+        self.offset = offset
         self.ratio = ratio
+        self.mode = mode
         self.prob = p
 
     def forward(self, x):
@@ -301,14 +298,16 @@ class GridMask(nn.Module):
             mask = np.ones((hh, ww), np.float32)
             st_h = np.random.randint(d)
             st_w = np.random.randint(d)
-            for i in range(hh // d):
-                s = d * i + st_h
-                t = min(s + l, hh)
-                mask[s:t, :] *= 0
-            for i in range(ww // d):
-                s = d * i + st_w
-                t = min(s + l, ww)
-                mask[:, s:t] *= 0
+            if self.use_h:
+                for i in range(hh // d):
+                    s = d * i + st_h
+                    t = min(s + l, hh)
+                    mask[s:t, :] *= 0
+            if self.use_w:
+                for i in range(ww // d):
+                    s = d * i + st_w
+                    t = min(s + l, ww)
+                    mask[:, s:t] *= 0
             r = np.random.randint(self.rotate)
             mask = Image.fromarray(np.uint8(mask))
             mask = mask.rotate(r)
@@ -316,8 +315,14 @@ class GridMask(nn.Module):
             mask = mask[(hh - h) // 2:(hh - h) // 2 + h, (ww - w) // 2:(ww - w) // 2 + w]
 
             mask = torch.from_numpy(mask).to(x.device, dtype=x.dtype)
+            if self.mode == 1:
+                mask = 1 - mask
             mask = mask.expand_as(x)
-            x = x * mask
+            if self.offset:
+                offset = torch.from_numpy(2 * (np.random.rand(h, w) - 0.5)).to(x.device, dtype=x.dtype)
+                x = x * mask + offset * (1 - mask)
+            else:
+                x = x * mask
             return x.view(n, c, h, w)
         return x
 
@@ -345,6 +350,52 @@ class LearnedPositionalEncoding(BaseModule):
             (x_embed.unsqueeze(0).repeat(h, 1, 1), y_embed.unsqueeze(1).repeat(
                 1, w, 1)),
             dim=-1).permute(2, 0, 1).unsqueeze(0).repeat(mask.shape[0], 1, 1, 1)
+        return pos
+
+
+class SinePositionalEncoding3D(BaseModule):
+    def __init__(self,
+                 num_feats,
+                 temperature=10000,
+                 normalize=False,
+                 scale=2 * torch.pi,
+                 eps=1e-6,
+                 offset=0,
+                 init_cfg=None):
+        super().__init__(init_cfg)
+        self.num_feats = num_feats
+        self.temperature = temperature
+        self.normalize = normalize
+        self.scale = scale
+        self.eps = eps
+        self.offset = offset
+
+    def forward(self, mask: torch.Tensor) -> torch.Tensor:
+        not_mask = ~mask
+        b, n, h, w = mask.shape
+        device = mask.device
+        n_embed = not_mask.cumsum(1, dtype=torch.float32)
+        y_embed = not_mask.cumsum(2, dtype=torch.float32)
+        x_embed = not_mask.cumsum(3, dtype=torch.float32)
+        if self.normalize:
+            n_embed = (n_embed + self.offset) / (n_embed[:, -1:, :, :] + self.eps) * self.scale
+            y_embed = (y_embed + self.offset) / (y_embed[:, :, -1:, :] + self.eps) * self.scale
+            x_embed = (x_embed + self.offset) / (x_embed[:, :, :, -1:] + self.eps) * self.scale
+        dim_t = torch.arange(self.num_feats, dtype=torch.float32, device=device)
+        dim_t = self.temperature ** (2 * (dim_t // 2) / self.num_feats)
+        n_embed = n_embed[:, :, :, :, None] / dim_t
+        x_embed = x_embed[:, :, :, :, None] / dim_t
+        y_embed = y_embed[:, :, :, :, None] / dim_t
+        n_embed = torch.stack(
+            (n_embed[:, :, :, :, 0::2].sin(), n_embed[:, :, :, :, 1::2].cos()),
+            dim=4).view(b, n, h, w, -1)
+        x_embed = torch.stack(
+            (x_embed[:, :, :, :, 0::2].sin(), x_embed[:, :, :, :, 1::2].cos()),
+            dim=4).view(b, n, h, w, -1)
+        y_embed = torch.stack(
+            (y_embed[:, :, :, :, 0::2].sin(), y_embed[:, :, :, :, 1::2].cos()),
+            dim=4).view(b, n, h, w, -1)
+        pos = torch.cat((n_embed, y_embed, x_embed), dim=4).permute(0, 1, 4, 2, 3)
         return pos
 
 
