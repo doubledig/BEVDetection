@@ -2,13 +2,13 @@ import copy
 from typing import List, Dict
 
 import torch
-from mmcv.cnn.bricks.transformer import build_transformer_layer, build_norm_layer
+from mmcv.cnn.bricks.transformer import build_transformer_layer
+from mmengine.model import BaseModule, bias_init_with_prob
 from torch import nn
 from torch.utils.checkpoint import checkpoint
-from mmengine.model import BaseModule, bias_init_with_prob
 
-from model.utils.module import SinePositionalEncoding3D
 from model.utils.functional import inverse_sigmoid, pos2pose3d
+from model.utils.module import SinePositionalEncoding3D
 
 
 class PETRDecoder(BaseModule):

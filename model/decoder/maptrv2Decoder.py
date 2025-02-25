@@ -65,11 +65,13 @@ class MapTrv2Decoder(BaseModule):
         self.init_weights()
 
     def init_weights(self):
-        nn.init.xavier_uniform_(self.reference_points.weight)
-        nn.init.constant_(self.reference_points.bias, 0.0)
-        bias_init = bias_init_with_prob(0.01)
-        for m in self.cls_branches:
-            nn.init.constant_(m[-1].bias, bias_init)
+        if not self._is_init:
+            nn.init.xavier_uniform_(self.reference_points.weight)
+            nn.init.constant_(self.reference_points.bias, 0.0)
+            bias_init = bias_init_with_prob(0.01)
+            for m in self.cls_branches:
+                nn.init.constant_(m[-1].bias, bias_init)
+            self._is_init = True
 
     def forward(self,
                 bev_feat: torch.Tensor,

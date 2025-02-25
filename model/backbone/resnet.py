@@ -1,9 +1,9 @@
 import logging
-from typing import Callable, List, Optional, Type, Union
+from typing import Callable, List, Optional, Type, Union, Tuple
 
 import torch.nn as nn
 from mmengine import print_log
-from mmengine.model import BaseModule, initialize, kaiming_init, constant_init
+from mmengine.model import BaseModule, initialize, kaiming_init, constant_init, PretrainedInit
 from torch import Tensor
 
 
@@ -216,9 +216,20 @@ class ResNet(BaseModule):
                     f'initialize {self.__class__.__name__} with init_cfg {self.init_cfg}',
                     logger='current',
                     level=logging.DEBUG)
-                init_cfg = self.init_cfg
-                assert isinstance(init_cfg, dict)
-                initialize(self, [init_cfg])
+                init_cfgs = self.init_cfg
+                if isinstance(self.init_cfg, dict):
+                    init_cfgs = [self.init_cfg]
+                other_cfgs = []
+                pretrained_cfg = []
+                for init_cfg in init_cfgs:
+                    assert isinstance(init_cfg, dict)
+                    if (init_cfg['type'] == 'Pretrained'
+                            or init_cfg['type'] is PretrainedInit):
+                        pretrained_cfg.append(init_cfg)
+                    else:
+                        other_cfgs.append(init_cfg)
+                initialize(self, other_cfgs)
+                initialize(self, pretrained_cfg)
             else:
                 for m in self.modules():
                     if isinstance(m, nn.Conv2d):
@@ -265,7 +276,7 @@ class ResNet(BaseModule):
 
         return nn.Sequential(*layers)
 
-    def forward(self, x: Tensor) -> Union[Tensor, tuple[Tensor]]:
+    def forward(self, x: Tensor) -> Union[Tensor, Tuple]:
         # See note [TorchScript super()]
         x = self.conv1(x)
         x = self.bn1(x)
@@ -290,6 +301,8 @@ class ResNet(BaseModule):
 
     def train(self, mode: bool = True):
         super().train(mode)
+        if not mode:
+            return self
         if self.bn_eval:
             for m in self.modules():
                 if isinstance(m, nn.BatchNorm2d):
@@ -310,3 +323,4 @@ class ResNet(BaseModule):
                 mod.eval()
                 for param in mod.parameters():
                     param.requires_grad = False
+        return self

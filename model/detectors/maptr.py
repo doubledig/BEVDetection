@@ -46,6 +46,12 @@ class MapTR(BaseModel):
         self.real_h = real_box[1]
         self.real_w = real_box[0]
 
+        self.init_weights()
+
+    def init_weights(self):
+        if not self._is_init:
+            self._is_init = True
+
     def forward(self,
                 inputs: torch.Tensor,
                 data_samples: Optional[list] = None,

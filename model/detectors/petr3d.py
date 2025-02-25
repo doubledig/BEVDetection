@@ -41,7 +41,8 @@ class Petr3D(BaseModel):
         self.box_cost = MODELS.build(box_cost)
 
     def init_weights(self):
-        self._is_init = True
+        if not self._is_init:
+            self._is_init = True
 
     def extract_feat(self, img):
         b, n, c, h, w = img.shape

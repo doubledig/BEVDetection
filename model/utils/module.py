@@ -7,15 +7,12 @@ import numpy as np
 import torch
 import torch.nn as nn
 from PIL import Image
-from mmcv.cnn.bricks.drop import build_dropout
 from mmcv.cnn.bricks.transformer import build_attention
 from mmcv.ops.multi_scale_deform_attn import MultiScaleDeformableAttnFunction, multi_scale_deformable_attn_pytorch
 from mmcv.utils import IS_CUDA_AVAILABLE, IS_MLU_AVAILABLE, IS_NPU_AVAILABLE
-from mmengine import deprecated_api_warning
 from mmengine.model import constant_init, kaiming_init, BaseModule, xavier_init
 from mmengine.registry import MODELS
 from mmengine.utils.dl_utils.parrots_wrapper import _BatchNorm
-
 from project_plugin import GeometricKernelAttentionFunc
 
 

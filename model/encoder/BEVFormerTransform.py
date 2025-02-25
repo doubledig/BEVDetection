@@ -57,10 +57,12 @@ class BEVFormerTransform(BaseModule):
         self.init_weights()
 
     def init_weights(self):
-        for p in self.parameters():
-            if p.dim() > 1:
-                nn.init.xavier_uniform_(p)
-        nn.init.xavier_uniform_(self.can_bus_mlp.weight)
+        if not self._is_init:
+            for p in self.parameters():
+                if p.dim() > 1:
+                    nn.init.xavier_uniform_(p)
+            nn.init.xavier_uniform_(self.can_bus_mlp.weight)
+            self._is_init = True
 
     def get_ref_points(self, mode):
         if mode == '3d':

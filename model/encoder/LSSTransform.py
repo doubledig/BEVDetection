@@ -1,9 +1,9 @@
 import torch
 from mmengine.model import BaseModule
+from project_plugin import bev_pool, bev_pool_v2
 from torch import nn
 from torch.amp import autocast
 
-from project_plugin import bev_pool, bev_pool_v2
 from model.backbone.resnet import BasicBlock
 from model.utils.functional import gen_dx_bx
 
@@ -49,9 +49,11 @@ class LSSTransform(BaseModule):
         self.init_weights()
 
     def init_weights(self):
-        for p in self.parameters():
-            if p.dim() > 1:
-                nn.init.xavier_uniform_(p)
+        if not self._is_init:
+            for p in self.parameters():
+                if p.dim() > 1:
+                    nn.init.xavier_uniform_(p)
+            self._is_init = True
 
     def forward(self, image: torch.Tensor, img_metas):
         b, n, c, fh, fw = image.shape

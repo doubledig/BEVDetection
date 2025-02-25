@@ -1,8 +1,10 @@
+import logging
 from typing import List, Tuple, Union
 
 import torch.nn as nn
 import torch.nn.functional as F
-from mmengine.model import BaseModule
+from mmengine import print_log
+from mmengine.model import BaseModule, PretrainedInit, initialize, xavier_init
 from torch import Tensor
 
 from model.utils.module import ConvModule
@@ -58,6 +60,34 @@ class FPN(BaseModule):
         self.fpn_convs = nn.ModuleList()
 
         self._init_layers(conv_cfg, norm_cfg, act_cfg)
+        self.init_weights()
+
+    def init_weights(self):
+        if not self._is_init:
+            if self.init_cfg:
+                print_log(
+                    f'initialize {self.__class__.__name__} with init_cfg {self.init_cfg}',
+                    logger='current',
+                    level=logging.DEBUG)
+                init_cfgs = self.init_cfg
+                if isinstance(self.init_cfg, dict):
+                    init_cfgs = [self.init_cfg]
+                other_cfgs = []
+                pretrained_cfg = []
+                for init_cfg in init_cfgs:
+                    assert isinstance(init_cfg, dict)
+                    if (init_cfg['type'] == 'Pretrained'
+                            or init_cfg['type'] is PretrainedInit):
+                        pretrained_cfg.append(init_cfg)
+                    else:
+                        other_cfgs.append(init_cfg)
+                initialize(self, other_cfgs)
+                initialize(self, pretrained_cfg)
+            else:
+                for m in self.modules():
+                    if isinstance(m, nn.Conv2d):
+                        xavier_init(m, distribution='uniform')
+            self.is_init = True
 
     def _init_layers(self, conv_cfg, norm_cfg, act_cfg):
         for i in range(self.start_level, self.backbone_end_level):

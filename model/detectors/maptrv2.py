@@ -1,8 +1,8 @@
 import copy
 
 import torch
-from torch import nn
 from mmengine import MODELS
+from torch import nn
 
 from model.detectors.maptr import MapTR
 from model.utils.misc import multi_apply
@@ -23,7 +23,6 @@ class MapTRv2(MapTR):
                  many_k=6,
                  many_weight=1.0,
                  **kwargs):
-        MapTR.__init__(self, **kwargs)
         self.embed_dims = embed_dims
         self.bev_h = bev_h
         self.bev_w = bev_w
@@ -50,6 +49,7 @@ class MapTRv2(MapTR):
                 nn.ReLU(inplace=True),
                 nn.Conv2d(self.embed_dims, 1, kernel_size=1, padding=0)
             )
+        super().__init__(self, **kwargs)
 
     def forward_test(self, inputs: torch.Tensor, data_samples=None):
         img_feats = self.extract_feat(inputs)
