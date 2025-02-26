@@ -1,6 +1,6 @@
 import argparse
-import warnings
 import os
+import warnings
 
 import mmengine
 import numpy as np

@@ -142,7 +142,7 @@ train_dataloader = dict(
         type='DefaultSampler',
         shuffle=True),
     collate_fn=dict(type='default_collate'),
-    batch_size=2,
+    batch_size=8,
     pin_memory=True,
     num_workers=4
 )
@@ -176,7 +176,7 @@ optim_wrapper = dict(
     type='AmpOptimWrapper',  #
     optimizer=dict(
         type='AdamW',
-        lr=4e-4,
+        lr=2e-4,
         weight_decay=0.01
     ),
     paramwise_cfg=dict(
@@ -187,9 +187,11 @@ optim_wrapper = dict(
     clip_grad=dict(max_norm=35, norm_type=2)
 )
 
+end = 4000 // train_dataloader['batch_size']
+
 param_scheduler = [
     dict(
-        type='LinearLR', start_factor=0.3, by_epoch=False, end=500),
+        type='LinearLR', start_factor=0.3, by_epoch=False, end=end),
     dict(
         type='CosineAnnealingLR',
         T_max=train_cfg['max_epochs'],
@@ -198,3 +200,5 @@ param_scheduler = [
         eta_min_ratio=1e-3
     )
 ]
+
+default_hooks['checkpoint'] = dict(type='CheckpointHook', interval=6)

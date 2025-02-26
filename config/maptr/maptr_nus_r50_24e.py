@@ -231,3 +231,5 @@ param_scheduler = [
         eta_min_ratio=1e-3
     )
 ]
+
+default_hooks['checkpoint'] = dict(type='CheckpointHook', interval=6)

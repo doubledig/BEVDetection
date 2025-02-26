@@ -209,18 +209,19 @@ class PETRDecoder(BaseModule):
                     key_pos=pos_embed,
                     key_padding_mask=masks
                 )
-            query = self.post_norm(query)
             if return_all:
+                tmp = self.post_norm(query)
                 reference = inverse_sigmoid(reference_points)
-                inter_class = self.cls_branches[i](query)
-                inter_coord = self.reg_branches[i](query)
+                inter_class = self.cls_branches[i](tmp)
+                inter_coord = self.reg_branches[i](tmp)
 
                 inter_coord[..., 0:3] = torch.sigmoid(inter_coord[..., 0:3] + reference)
 
                 inter_classes.append(inter_class)
                 inter_coords.append(inter_coord)
         if return_all:
-            return inter_classes, inter_coords
+            return torch.stack(inter_classes), torch.stack(inter_coords)
+        query = self.post_norm(query)
         reference = inverse_sigmoid(reference_points)
         inter_class = self.cls_branches[-1](query)
         inter_coord = self.reg_branches[-1](query)

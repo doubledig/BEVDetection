@@ -16,7 +16,7 @@ class PackDataToInputs(BaseTransform):
         'prev', 'next', 'token', 'img_shape', 'img_padshape',
         'intrinsic', 'train2ego', 'ego2cam', 'can_bus', 'gt_bbox_3d',
         'depth', 'gt_label', 'gt_pts', 'gt_bev', 'gt_pv', 'gt_mask', 'gt_test',
-        'gt_velocity'
+        'gt_velocity', 'ego2global'
     )
 
     def transform(self,

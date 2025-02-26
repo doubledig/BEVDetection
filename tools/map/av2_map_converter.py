@@ -12,10 +12,10 @@ import numpy as np
 from av2.datasets.sensor.av2_sensor_dataloader import AV2SensorDataLoader
 from av2.map.map_api import ArgoverseStaticMap
 from nuscenes.eval.common.utils import quaternion_yaw
+from pyquaternion import Quaternion
 from shapely import ops
 from shapely.geometry import LineString, Polygon, CAP_STYLE, JOIN_STYLE, box, MultiPolygon
 from shapely.strtree import STRtree
-from pyquaternion import Quaternion
 
 CAM_NAMES = ('ring_front_center', 'ring_front_right', 'ring_front_left',
              'ring_rear_right', 'ring_rear_left', 'ring_side_right', 'ring_side_left',

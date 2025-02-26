@@ -202,7 +202,7 @@ class _OSA_module(nn.Module):
         identity_feat = x
 
         output = [x]
-        if self.depthwise and self.isReduced:
+        if self.depth_wise and self.isReduced:
             x = self.conv_reduction(x)
         for layer in self.layers:
             x = layer(x)
@@ -323,11 +323,11 @@ class VoVNet(BaseModule):
     def forward(self, x: torch.Tensor) -> Tuple:
         outputs = []
         x = self.stem(x)
-        if "stem" in self._out_features:
+        if "stem" in self.out_features:
             outputs.append(x)
         for name in self.stage_names:
             x = getattr(self, name)(x)
-            if name in self._out_features:
+            if name in self.out_features:
                 outputs.append(x)
 
         return tuple(outputs)

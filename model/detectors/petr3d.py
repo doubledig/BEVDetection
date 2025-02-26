@@ -23,6 +23,7 @@ class Petr3D(BaseModel):
                  cls_cost=None,
                  box_loss=None,
                  box_cost=None,
+                 velocity_weight=0.2,
                  init_cfg=None):
         super().__init__(init_cfg)
 
@@ -39,6 +40,7 @@ class Petr3D(BaseModel):
         self.box_loss = MODELS.build(box_loss)
         self.cls_cost = MODELS.build(cls_cost)
         self.box_cost = MODELS.build(box_cost)
+        self.velocity_weight = velocity_weight
 
     def init_weights(self):
         if not self._is_init:
@@ -81,19 +83,19 @@ class Petr3D(BaseModel):
         inter_coord = inter_coord.flatten(0, 1)[box_ind]
 
         # 归一化
-        inter_coord[..., 0:1] = inter_coord[..., 0:1] * (self.detect_range[3] - self.detect_range[0]) + \
-                                self.detect_range[0]
-        inter_coord[..., 1:2] = inter_coord[..., 1:2] * (self.detect_range[4] - self.detect_range[1]) + \
-                                self.detect_range[1]
-        inter_coord[..., 2:3] = inter_coord[..., 2:3] * (self.detect_range[5] - self.detect_range[2]) + \
-                                self.detect_range[2]
+        # inter_coord[..., 0:1] = inter_coord[..., 0:1] * (self.detect_range[3] - self.detect_range[0]) + \
+        #                         self.detect_range[0]
+        # inter_coord[..., 1:2] = inter_coord[..., 1:2] * (self.detect_range[4] - self.detect_range[1]) + \
+        #                         self.detect_range[1]
+        # inter_coord[..., 2:3] = inter_coord[..., 2:3] * (self.detect_range[5] - self.detect_range[2]) + \
+        #                         self.detect_range[2]
         inter_coord[..., 3:6] = torch.exp(inter_coord[..., 3:6])
         inter_coord[..., 6:7] = inter_coord[..., 6:7] * torch.pi / 2
 
         predictions_dict = {
-            'bboxes': inter_coord,
-            'scores': scores,
-            'labels': labels
+            'bboxes': inter_coord.cpu(),
+            'scores': scores.cpu(),
+            'labels': labels.cpu()
         }
         return [predictions_dict]
 
@@ -103,6 +105,13 @@ class Petr3D(BaseModel):
         # petr 结构中不将特征转换到bev域下
         # decoder
         inter_classes, inter_coords = self.decoder(img_feats, data_samples, return_all=True)
+        # 归一化
+        inter_coords[..., 0:1] = inter_coords[..., 0:1] * (self.detect_range[3] - self.detect_range[0]) + \
+                                 self.detect_range[0]
+        inter_coords[..., 1:2] = inter_coords[..., 1:2] * (self.detect_range[4] - self.detect_range[1]) + \
+                                 self.detect_range[1]
+        inter_coords[..., 2:3] = inter_coords[..., 2:3] * (self.detect_range[5] - self.detect_range[2]) + \
+                                 self.detect_range[2]
         # loss
         loss = self.loss(inter_classes,
                          inter_coords,
@@ -118,9 +127,9 @@ class Petr3D(BaseModel):
             gt_label.append(img_meta.gt_label)
             gts = img_meta.gt_bbox_3d
             # 归一化处理
-            gts[..., 0:1] = (gts[..., 0:1] - self.detect_range[0]) / (self.detect_range[3] - self.detect_range[0])
-            gts[..., 1:2] = (gts[..., 1:2] - self.detect_range[1]) / (self.detect_range[4] - self.detect_range[1])
-            gts[..., 2:3] = (gts[..., 2:3] - self.detect_range[2]) / (self.detect_range[5] - self.detect_range[2])
+            # gts[..., 0:1] = (gts[..., 0:1] - self.detect_range[0]) / (self.detect_range[3] - self.detect_range[0])
+            # gts[..., 1:2] = (gts[..., 1:2] - self.detect_range[1]) / (self.detect_range[4] - self.detect_range[1])
+            # gts[..., 2:3] = (gts[..., 2:3] - self.detect_range[2]) / (self.detect_range[5] - self.detect_range[2])
             gts[..., 3:6] = torch.log(gts[..., 3:6])
             gts[..., 6:7] = gts[..., 6:7] * 2 / torch.pi
             # 速度没有归一化，如果需要归一化，使用什么方法？
@@ -172,6 +181,7 @@ class Petr3D(BaseModel):
 
         assigned_label = torch.full((num_pred,), self.num_cls, dtype=torch.long, device=p_cls.device)
         box_weights = torch.ones_like(gt_bbox)
+        box_weights[..., -2:] = self.velocity_weight
 
         if num_gts == 0:
             return assigned_label, torch.zeros_like(gt_bbox), torch.zeros_like(gt_bbox), box_weights, num_gts
