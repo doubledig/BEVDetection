@@ -14,9 +14,9 @@ from simplification.cutil import simplify_coords_vw, simplify_coords_idx
 class PackDataToInputs(BaseTransform):
     MATE_KEYS = (
         'prev', 'next', 'token', 'img_shape', 'img_padshape',
-        'intrinsic', 'train2ego', 'ego2cam', 'can_bus', 'gt_bbox_3d',
+        'intrinsic', 'train2ego', 'cam2ego', 'can_bus', 'gt_bbox_3d',
         'depth', 'gt_label', 'gt_pts', 'gt_bev', 'gt_pv', 'gt_mask', 'gt_test',
-        'gt_velocity', 'ego2global'
+        'gt_velocity', 'ego2global', 'gt_attr', 'gt_bicycle_rack'
     )
 
     def transform(self,
@@ -29,7 +29,7 @@ class PackDataToInputs(BaseTransform):
         data_sample = BaseDataElement()
         data_metas = {}
         for key in (
-            'depth', 'intrinsic', 'ego2cam', 'train2ego', 'can_bus',
+            'depth', 'intrinsic', 'cam2ego', 'train2ego', 'can_bus',
             'gt_label', 'gt_pts', 'gt_bev', 'gt_pv', 'gt_mask', 'gt_bbox_3d',
             'gt_velocity'
         ):
@@ -50,9 +50,11 @@ class Make3dGts(BaseTransform):
     def __init__(self,
                  use_valid=True,
                  xy_range=(-51.2, -51.2, -5.0, 51.2, 51.2, 3.0),
+                 val_mode=False,
                  classes: Union[Tuple, List] = None):
         self.use_valid = use_valid
         self.xy_range = xy_range
+        self.val_mode = val_mode
         self.classes = classes
 
     def transform(self, results: Dict) -> Optional[Union[Dict, Tuple[List, List]]]:
@@ -61,6 +63,8 @@ class Make3dGts(BaseTransform):
         gt_label = []
         gt_bbox = []
         gt_velocity = []
+        gt_attr = []
+        gt_bicycle_rack = []
         for gt in gts:
             # 过滤不可见真值
             if self.use_valid:
@@ -78,6 +82,10 @@ class Make3dGts(BaseTransform):
                 gt_velocity.append(np.isnan(gt['gt_velocity'][0]))
                 gt_bbox.append(np.concatenate([gt['gt_box'], np.nan_to_num(gt['gt_velocity'][:2])]))
                 gt_label.append(self.classes.index(gt['gt_name']))
+                if self.val_mode:
+                    gt_attr.append(gt['attribute_name'])
+            elif self.val_mode and gt['gt_name'] == 'static_object.bicycle_rack':
+                gt_bicycle_rack.append(gt['gt_box'])
             else:
                 continue
         gt_label = np.array(gt_label, dtype=np.int64)
@@ -86,6 +94,9 @@ class Make3dGts(BaseTransform):
         results['gt_label'] = gt_label
         results['gt_bbox_3d'] = gt_bbox
         results['gt_velocity'] = gt_velocity
+        if self.val_mode:
+            results['gt_attr'] = gt_attr
+            results['gt_bicycle_rack'] = np.array(gt_bicycle_rack, dtype=np.float32)
         return results
 
 
@@ -157,8 +168,8 @@ class MakeLineGts(BaseTransform):
                     z = np.full((coords.shape[0], 1), -train2ego[2, 3])
                     coords = np.concatenate([coords, z], axis=1)
                 for i in range(cam_num):
-                    e2c = results['ego2cam'][i]
-                    t2c = e2c @ train2ego
+                    c2e = results['cam2ego'][i]
+                    t2c = np.linalg.solve(c2e, train2ego)
                     coord = coords @ t2c[:3, :3].T + t2c[:3, 3]
                     geom_pv = LineString(coord[:, [0, 2, 1]])
                     geom_pv = geom_pv.intersection(real_box)

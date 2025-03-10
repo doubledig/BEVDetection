@@ -3,6 +3,7 @@ from mmengine import read_base
 with read_base():
     from ..base.default_runtime import *
 
+from torch.nn import BatchNorm2d
 from mmcv.cnn.bricks.transformer import FFN, BaseTransformerLayer, MultiheadAttention
 from model.datasets.pipeline.loading import LoadNusImageFromFiles
 from model.datasets.pipeline.formating import PackDataToInputs, Make3dGts
@@ -31,12 +32,15 @@ model = dict(
         type=ResNet,
         depth=50,
         frozen_stages=-1,
-        bn_eval=True,
-        bn_frozen=True,
+        norm_eval=True,
+        norm_cfg=dict(type=BatchNorm2d, requires_grad=False),
         out_indices=(2, 3,),
+        style='caffe',
+        dcn=dict(type='DCNv2', deform_groups=1, fallback_on_stride=False),
+        stage_with_dcn=(False, False, True, True),
         init_cfg=dict(
             type='Pretrained',
-            checkpoint='ckpts/resnet50-11ad3fa6.pth'  # resnet50-19c8e357.pth
+            checkpoint='ckpts/resnet50_msra-5891d200.pth'
         )
     ),
     img_neck=dict(
@@ -55,6 +59,7 @@ model = dict(
         load_depth=True,
         position_range=position_range,
         num_layers=6,
+        use_cp=False,
         transformerlayers=dict(
             type=BaseTransformerLayer,
             batch_first=batch_first,
@@ -115,6 +120,10 @@ model = dict(
 
 train_pipeline = [
     dict(type=LoadNusImageFromFiles,
+         scale=0.7,
+         mean=(103.530, 116.280, 123.675),
+         std=(1.0, 1.0, 1.0),
+         to_rgb=False,
          if_random=True),
     dict(type=Make3dGts,
          use_valid=True,
@@ -123,7 +132,12 @@ train_pipeline = [
     dict(type=PackDataToInputs)
 ]
 val_pipeline = [
-    dict(type=LoadNusImageFromFiles),
+    dict(type=LoadNusImageFromFiles,
+         scale=0.7,
+         mean=(103.530, 116.280, 123.675),
+         std=(1.0, 1.0, 1.0),
+         to_rgb=False,
+         if_random=False),
     dict(type=Make3dGts,
          use_valid=True,
          xy_range=detect_range,

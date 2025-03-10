@@ -68,27 +68,22 @@ class LSSTransform(BaseModule):
         if self.frustum is None:
             self.frustum = self.create_frustum(fh, fw, ih, iw)
         point = self.frustum.to(device).view(1, 1, self.depth, fh, fw, 3).repeat(b, n, 1, 1, 1, 1)
-        ego2cam = []
-        train2ego = []
+        cam2train = []
         intrinsics = []
         for meta in img_metas:
-            ego2cam.append(meta.ego2cam)
-            train2ego.append(meta.train2ego)
+            cam2train.append(torch.linalg.solve(meta.train2ego, meta.ego2cam))
             intrinsics.append(meta.intrinsic)
-        ego2cam = torch.stack(ego2cam).to(torch.float32).to(device)  # b, n, 4, 4
-        train2ego = torch.stack(train2ego).to(torch.float32).to(device)  # b, 4, 4
+        cam2train = torch.stack(cam2train).to(torch.float32).to(device)  # b, n, 4, 4
         intrinsics = torch.stack(intrinsics).to(torch.float32).to(device)  # b, n, 4, 4
         # 将img下的深度点转移到bev下
         # img2cam = torch.inverse(intrinsics)
         point[..., :2] = point[..., :2] * point[..., 2:3]
         point = torch.linalg.solve(intrinsics.view(b, n, 1, 1, 1, 3, 3), point.unsqueeze(-1))
-        cam2ego = torch.inverse(ego2cam).view(b, n, 1, 1, 1, 4, 4)
-        point = torch.matmul(cam2ego[..., :3, :3], point) + cam2ego[..., :3, 3:]
-        ego2train = torch.inverse(train2ego).view(b, 1, 1, 1, 1, 4, 4)
-        point = torch.matmul(ego2train[..., :3, :3], point) + ego2train[..., :3, 3:]
+        cam2train = cam2train.view(b, n, 1, 1, 1, 4, 4)
+        point = torch.matmul(cam2train[..., :3, :3], point) + cam2train[..., :3, 3:]
         point = point.squeeze(-1)
         # 得到mlp的输入
-        cam2train = ego2train.view(b, 1, 4, 4) @ cam2ego.view(b, n, 4, 4)
+        cam2train = cam2train.view(b, n, 4, 4)
         sss = torch.eye(3, device=device).view(1, 1, 3, 3).expand(b, n, -1, -1)
         # train2ego = train2ego.view(b, 1, 4, 4).expand(-1, n, -1, -1)
         mlp_input = torch.stack([

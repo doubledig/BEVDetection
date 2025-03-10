@@ -33,10 +33,10 @@ NuSCENES_NAME_MAPPING = {
 
 
 def get_data_from_sample(nus,
-                         nus_map,
                          train_scenes,
                          val_scenes,
                          test=False):
+    attribute_map = {a['token']: a['name'] for a in nus.attribute}
     train_infos = []
     val_infos = []
     for sample in mmengine.track_iter_progress(nus.sample):
@@ -66,7 +66,7 @@ def get_data_from_sample(nus,
             cams[cam] = dict(
                 data_path=sd_cam['filename'],
                 cam_intrinsic=cam_intrinsic,
-                ego2cam=np.linalg.inv(cam2ego),
+                cam2ego=cam2ego,
             )
 
         info = dict(
@@ -90,13 +90,19 @@ def get_data_from_sample(nus,
                 box_3d['valid_flag'] = annotation['num_lidar_pts'] + annotation['num_radar_pts'] > 0
                 box_3d['num_lidar_pts'] = (annotation['num_lidar_pts'])
                 box_3d['num_radar_pts'] = (annotation['num_radar_pts'])
+                attr = annotation['attribute_tokens']
+                if len(attr) == 0:
+                    box_3d['attribute_name'] = ''
+                else:
+                    box_3d['attribute_name'] = attribute_map[attr[0]]
                 boxx = boxes[i]
                 # x, y, z, w, l, h, rotation
                 # 忽略3d框在xy方向上的旋转，假设上下面始终与地面水平
+                # bbox坐标系从x轴向前转换为y轴向前
                 rot = boxx.orientation.yaw_pitch_roll[0] - np.pi / 2
-                while rot < np.pi / 2:
-                    rot += np.pi
-                # rot 转换到 `[-pi/2, pi/2]`
+                if rot < -np.pi:
+                    rot += 2 * np.pi
+                # rot 转换到 `[-pi, pi]`
                 box_3d['gt_box'] = np.concatenate([boxx.center,
                                                    boxx.wlh,
                                                    [rot]])
@@ -121,9 +127,6 @@ def create_nus_infos(root_path,
                      save_path,
                      version='v1.0-trainval'):
     nusc = NuScenes(version=version, dataroot=root_path, verbose=True)
-    nus_map = {}
-    for loc in ('boston-seaport', 'singapore-hollandvillage', 'singapore-onenorth', 'singapore-queenstown'):
-        nus_map[loc] = NuScenesMap(dataroot=root_path, map_name=loc)
 
     if version == 'v1.0-trainval':
         train_scenes = splits.train
@@ -158,7 +161,7 @@ def create_nus_infos(root_path,
             len(train_scenes), len(val_scenes)))
 
     train_infos, val_infos = get_data_from_sample(
-        nusc, nus_map, train_scenes, val_scenes, test
+        nusc, train_scenes, val_scenes, test
     )
 
     metadata = dict(

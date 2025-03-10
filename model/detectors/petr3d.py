@@ -90,7 +90,7 @@ class Petr3D(BaseModel):
         # inter_coord[..., 2:3] = inter_coord[..., 2:3] * (self.detect_range[5] - self.detect_range[2]) + \
         #                         self.detect_range[2]
         inter_coord[..., 3:6] = torch.exp(inter_coord[..., 3:6])
-        inter_coord[..., 6:7] = inter_coord[..., 6:7] * torch.pi / 2
+        inter_coord[..., 6:7] = inter_coord[..., 6:7] * torch.pi
 
         predictions_dict = {
             'bboxes': inter_coord.cpu(),
@@ -101,7 +101,7 @@ class Petr3D(BaseModel):
 
     def forward_train(self, inputs: torch.Tensor, data_samples=None):
         img_feats = self.extract_feat(inputs)
-        img_feats = img_feats[0]  # 不使用多层次特征
+        img_feats = img_feats[0]  # 只使用一个多层次特征
         # petr 结构中不将特征转换到bev域下
         # decoder
         inter_classes, inter_coords = self.decoder(img_feats, data_samples, return_all=True)
@@ -131,7 +131,7 @@ class Petr3D(BaseModel):
             # gts[..., 1:2] = (gts[..., 1:2] - self.detect_range[1]) / (self.detect_range[4] - self.detect_range[1])
             # gts[..., 2:3] = (gts[..., 2:3] - self.detect_range[2]) / (self.detect_range[5] - self.detect_range[2])
             gts[..., 3:6] = torch.log(gts[..., 3:6])
-            gts[..., 6:7] = gts[..., 6:7] * 2 / torch.pi
+            gts[..., 6:7] = gts[..., 6:7] / torch.pi
             # 速度没有归一化，如果需要归一化，使用什么方法？
             gt_bbox.append(gts)
             gt_velocity.append(img_meta.gt_velocity)
@@ -189,7 +189,7 @@ class Petr3D(BaseModel):
             # class cost
             cls_cost = self.cls_cost(p_cls.detach(), gt_cls)
             # bbox cost
-            bbox_cost = self.box_cost(p_box[:, :7].detach(), gt_bbox[:, :7])
+            bbox_cost = self.box_cost(p_box[:, :-2].detach(), gt_bbox[:, :-2])
 
             cost = cls_cost + bbox_cost
             cost = torch.nan_to_num(cost, 1e5, 1e5, -1e5)
@@ -203,6 +203,6 @@ class Petr3D(BaseModel):
             p_box = p_box[matched_row_ind]
             gt_bbox = gt_bbox[matched_col_ind]
             # 剔除
-            box_weights[gt_velocity[matched_col_ind], 7:9] = 0
+            box_weights[gt_velocity[matched_col_ind], -2:] = 0
 
             return assigned_label, p_box, gt_bbox, box_weights, num_gts

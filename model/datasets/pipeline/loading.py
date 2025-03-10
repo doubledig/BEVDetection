@@ -16,6 +16,9 @@ class LoadNusImageFromFiles(BaseTransform):
                  scale: float = 0.5,
                  if_random: bool = False,
                  if_normalize: bool = True,
+                 mean=None,
+                 std=None,
+                 to_rgb: bool = True,
                  pad_divisor: int = 32):
         self.color_type = color_type
         # 缩放 填充
@@ -24,9 +27,16 @@ class LoadNusImageFromFiles(BaseTransform):
         self.if_random = if_random
         # 归一
         self.if_normalize = if_normalize
-        self.mean = np.array([(123.675, 116.28, 103.53)], dtype=np.float64)
-        self.std = np.array([(58.395, 57.12, 57.375)], dtype=np.float32)
+        if mean is None:
+            self.mean = np.array([(123.675, 116.28, 103.53)], dtype=np.float64)
+        else:
+            self.mean = np.array([mean], dtype=np.float64)
+        if std is None:
+            self.std = np.array([(58.395, 57.12, 57.375)], dtype=np.float64)
+        else:
+            self.std = np.array([std], dtype=np.float64)
         self.stdinv = 1 / np.float64(self.std)
+        self.to_rgb = to_rgb
 
     def _init_scale_pad(self, scale, pad_divisor):
         self.if_scale = scale != 1
@@ -43,14 +53,14 @@ class LoadNusImageFromFiles(BaseTransform):
         images = []
         img_shapes = []
         intrinsics = []
-        ego2cams = []
+        cam2egos = []
 
         # 缩放--随机--归一--填充
         for cam_type, cam_info in results['cams'].items():
             # 读取
             img = image.imread(cam_info['data_path'], flag=self.color_type)
             intrinsic = cam_info['cam_intrinsic']
-            ego2cams.append(cam_info['ego2cam'])
+            cam2egos.append(cam_info['cam2ego'])
             img = img.astype(np.float32)
             # 缩放
             if self.if_scale:
@@ -63,7 +73,8 @@ class LoadNusImageFromFiles(BaseTransform):
                 img = self.random_img(img)
             # 归一
             if self.if_normalize:
-                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                if self.to_rgb:
+                    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
                 img = cv2.subtract(img, self.mean)
                 img = cv2.multiply(img, self.stdinv)
             # 填充
@@ -74,7 +85,7 @@ class LoadNusImageFromFiles(BaseTransform):
         results['img_shape'] = img_shapes
         results['img_padshape'] = (self.pad_h, self.pad_w)
         results['intrinsic'] = np.array(intrinsics)
-        results['ego2cam'] = np.array(ego2cams)
+        results['cam2ego'] = np.array(cam2egos)
         del results['cams']
         return results
 

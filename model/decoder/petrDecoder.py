@@ -39,7 +39,6 @@ class PETRDecoder(BaseModule):
         self.position_range = position_range
         self.use_cp = use_cp  # 节省显存标志
         self.bbox_3d_len = 9  # x, y, z, w, l, h, rot, vx, vy
-        self.bbox_3d_weight = (1, 1, 1, 1, 1, 1, 1, 0.2, 0.2)
 
         if isinstance(transformerlayers, dict):
             transformerlayers = [
@@ -107,7 +106,6 @@ class PETRDecoder(BaseModule):
             nn.ReLU(),
             nn.Linear(self.embed_dims, self.embed_dims),
         )
-        self.post_norm = nn.LayerNorm(self.embed_dims)
 
     def init_weights(self):
         if not self._is_init:
@@ -127,18 +125,19 @@ class PETRDecoder(BaseModule):
 
         i_h, i_w = img_metas[0].img_padshape
         masks = pv_feats.new_ones((b, num_cam, i_h, i_w))
-        train2cam = []
-        intrinsics = []
+        img2train = []
         for i in range(b):
             if self.with_position:
-                train2cam.append(img_metas[i].ego2cam @ img_metas[i].train2ego)
-                intrinsics.append(img_metas[i].intrinsic)
+                t2i = torch.linalg.solve(img_metas[i].cam2ego, img_metas[i].train2ego)
+                tmp = img_metas[i].intrinsic @ t2i[..., :3, :]
+                t2i[..., :3, :] = tmp
+                img2train.append(t2i)
             for j in range(num_cam):
-                i_h, i_w = img_metas[i].img_shape[j]
-                masks[i, j, :i_h, :i_w] = 0
+                ii_h, ii_w = img_metas[i].img_shape[j]
+                masks[i, j, :ii_h, :ii_w] = 0
         if self.with_position:
-            train2cam = torch.stack(train2cam).to(torch.float32).to(device)  # b, n, 4, 4
-            intrinsics = torch.stack(intrinsics).to(torch.float32).to(device)  # b, n, 3, 3
+            img2train = torch.stack(img2train)
+            img2train = torch.linalg.inv(img2train).to(torch.float32).to(device)  # b, n, 4, 4
 
         pv_feats = self.input_proj(pv_feats.flatten(0, 1))
         c, h, w = pv_feats.shape[-3:]
@@ -157,28 +156,29 @@ class PETRDecoder(BaseModule):
             pos_embed = self.adapt_pos3d(pos_embed.flatten(0, 1)).view(b, num_cam, c, h, w)
 
         if self.with_position:
-            coords = self.position_embedding(h, w, i_h, i_w).to(device)  # D, h, w, 4
-            coords[..., :2] = coords[..., :2] * torch.where(coords[..., 2:3] > 1e-5, coords[..., 2:3], 1e-5)
-            coords = coords.view(1, 1, self.depth_num, h, w, 4, 1).repeat(b, num_cam,  1, 1, 1, 1, 1)
-            intrinsics = intrinsics.view(b, num_cam, 1, 1, 1, 3, 3)
-            train2cam = train2cam.view(b, num_cam, 1, 1, 1, 4, 4)
-            coords[..., :3, :] = torch.linalg.solve(intrinsics, coords[..., :3, :])
-            coords = torch.linalg.solve(train2cam, coords)
+            coords = self.position_embedding(h, w, i_h, i_w).to(device)  # w, h, d, 4
+            coords[..., :2] = coords[..., :2] * torch.clamp(coords[..., 2:3], min=1e-5)
+            coords = coords.view(1, 1, w, h, self.depth_num, 4, 1).repeat(b, num_cam, 1, 1, 1, 1, 1)
+            img2train = img2train.view(b, num_cam, 1, 1, 1, 4, 4)
+            with torch.autocast(device.type, enabled=False):
+                coords = img2train @ coords
             coords = coords[..., :3, 0]
-            coords[..., 2:3] = (coords[..., 2:3] - self.position_range[0]) / (
-                        self.position_range[3] - self.position_range[0])
+            coords[..., 0:1] = (coords[..., 0:1] - self.position_range[0]) / (
+                    self.position_range[3] - self.position_range[0])
             coords[..., 1:2] = (coords[..., 1:2] - self.position_range[1]) / (
-                        self.position_range[4] - self.position_range[1])
-            coords[..., 0:1] = (coords[..., 0:1] - self.position_range[2]) / (
-                        self.position_range[5] - self.position_range[2])
-            coords = coords.permute(0, 1, 2, 5, 3, 4).contiguous().flatten(2, 3)
+                    self.position_range[4] - self.position_range[1])
+            coords[..., 2:3] = (coords[..., 2:3] - self.position_range[2]) / (
+                    self.position_range[5] - self.position_range[2])
+            coords = coords.permute(0, 1, 4, 5, 3, 2).contiguous().view(b * num_cam, -1, h, w)
             coords = inverse_sigmoid(coords)
-            coords = self.position_encoder(coords.flatten(0, 1)).view(b, num_cam, c, h, w)
+
+            coords = self.position_encoder(coords).view(b, num_cam, c, h, w)
             pos_embed = pos_embed + coords
 
         reference_points = self.reference_points.weight
         query_embed = self.query_embedding(pos2pose3d(reference_points))
         reference_points = reference_points.unsqueeze(0).expand(b, -1, -1)
+        reference = inverse_sigmoid(reference_points)
 
         pv_feats = pv_feats.permute(0, 1, 3, 4, 2).contiguous().view(b, -1, c)
         pos_embed = pos_embed.permute(0, 1, 3, 4, 2).contiguous().view(b, -1, c)
@@ -210,10 +210,8 @@ class PETRDecoder(BaseModule):
                     key_padding_mask=masks
                 )
             if return_all:
-                tmp = self.post_norm(query)
-                reference = inverse_sigmoid(reference_points)
-                inter_class = self.cls_branches[i](tmp)
-                inter_coord = self.reg_branches[i](tmp)
+                inter_class = self.cls_branches[i](query)
+                inter_coord = self.reg_branches[i](query)
 
                 inter_coord[..., 0:3] = torch.sigmoid(inter_coord[..., 0:3] + reference)
 
@@ -221,8 +219,6 @@ class PETRDecoder(BaseModule):
                 inter_coords.append(inter_coord)
         if return_all:
             return torch.stack(inter_classes), torch.stack(inter_coords)
-        query = self.post_norm(query)
-        reference = inverse_sigmoid(reference_points)
         inter_class = self.cls_branches[-1](query)
         inter_coord = self.reg_branches[-1](query)
         inter_coord[..., 0:3] = torch.sigmoid(inter_coord[..., 0:3] + reference)
@@ -237,6 +233,6 @@ class PETRDecoder(BaseModule):
             coords_d = self.depth_start + bin_size * index * (index + 1) / (self.depth_num * (self.depth_num + 1))
         else:
             coords_d = self.depth_start + bin_size * index / self.depth_num
-        coords = torch.stack(torch.meshgrid([coords_d, coords_h, coords_w])).permute(1, 2, 3, 0)
+        coords = torch.stack(torch.meshgrid([coords_w, coords_h, coords_d])).permute(1, 2, 3, 0)
         coords = torch.cat((coords, torch.ones_like(coords[..., :1])), dim=-1)
         return coords

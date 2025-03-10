@@ -5,6 +5,7 @@ with read_base():
 
 from mmcv.cnn.bricks.transformer import FFN, BaseTransformerLayer, MultiheadAttention
 from mmcv.ops import MultiScaleDeformableAttention
+from torch.nn import BatchNorm2d
 
 from model.datasets.nus_map_dataset import CustomNusMapDataset
 from model.datasets.pipeline.formating import MakeLineGts, PackDataToInputs
@@ -39,8 +40,9 @@ model = dict(
         type=ResNet,
         depth=50,
         frozen_stages=1,
-        bn_eval=True,
-        bn_frozen=True,
+        norm_eval=True,
+        out_indices=(3,),
+        norm_cfg=dict(type=BatchNorm2d, requires_grad=False),
         init_cfg=dict(
             type='Pretrained',
             checkpoint='ckpts/resnet50-19c8e357.pth'  # resnet50-11ad3fa6.pth
@@ -206,7 +208,7 @@ train_cfg = dict(
 )
 
 optim_wrapper = dict(
-    type='AmpOptimWrapper', #
+    type='AmpOptimWrapper',  #
     optimizer=dict(
         type='AdamW',
         lr=3e-4,

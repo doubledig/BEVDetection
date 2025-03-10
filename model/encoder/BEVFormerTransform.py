@@ -94,15 +94,15 @@ class BEVFormerTransform(BaseModule):
         bev_pos = self.positional_encoding(bev_mask).flatten(2)
 
         can_bus = []
-        train2cam = []
-        intrinsics = []
+        train2img = []
         for img_meta in img_metas:
             can_bus.append(img_meta.can_bus)
-            train2cam.append(img_meta.ego2cam @ img_meta.train2ego)
-            intrinsics.append(img_meta.intrinsics)
+            t2i = torch.linalg.solve(img_meta.cam2ego, img_meta.train2ego)
+            tmp = img_meta.intrinsic @ t2i[..., :3, :]
+            t2i[..., :3, :] = tmp
+            train2img.append(t2i)
         can_bus = torch.stack(can_bus).to(torch.float32).to(device)
-        train2cam = torch.stack(train2cam).to(torch.float32).to(device)  # b, n, 4, 4
-        intrinsics = torch.stack(intrinsics).to(torch.float32).to(device)  # b, n, 3, 3
+        train2img = torch.stack(train2img).to(torch.float32).to(device)  # b, n, 4, 4
 
         if self.use_shift:
             delta_x = can_bus[:, 0]
@@ -133,10 +133,8 @@ class BEVFormerTransform(BaseModule):
         ref_2d = self.ref_2d.expand(b, -1, -1, -1).to(device)  # b, hw, 1, 2
 
         ref_cam = ref_3d.view(b, self.num_points_in_pillar, 1, -1, 3, 1)
-        train2cam = train2cam.view(b, 1, num_cam, 1, 4, 4)
-        intrinsics = intrinsics.view(b, 1, num_cam, 1, 3, 3)
-        ref_cam = train2cam[..., :3, :3] @ ref_cam + train2cam[..., :3, :3]
-        ref_cam = intrinsics @ ref_cam
+        train2img = train2img.view(b, 1, num_cam, 1, 4, 4)
+        ref_cam = train2img[..., :3, :3] @ ref_cam + train2img[..., :3, :3]
         ref_cam = ref_cam.squeeze(-1)  # b, 4, num_cam, hw, 3
 
         bev_mask = ref_cam[..., 2] > 1e-5
